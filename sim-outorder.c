@@ -739,7 +739,7 @@ sim_reg_options(struct opt_odb_t *odb)
 
   opt_reg_string(odb, "-cache:dl1",
 		 "l1 data cache config, i.e., {<config>|none}",
-		 &cache_dl1_opt, "dl1:128:32:4:l:1",
+		 &cache_dl1_opt, "dl1:128:32:4:l:0",
 		 /* print */TRUE, NULL);
 
   opt_reg_note(odb,
@@ -4496,7 +4496,8 @@ sim_main(void)
 	      { fault = (FAULT); break; }
 #include "machine.def"
 	    default:
-	      panic("attempted to execute a bogus opcode");
+	      continue;
+	      //panic("attempted to execute a bogus opcode");
 	    }
 
 	  if (fault != md_fault_none)
@@ -4539,7 +4540,7 @@ sim_main(void)
 	panic("RUU_head/RUU_tail wedged");
       if (((LSQ_head + LSQ_num) % LSQ_size) != LSQ_tail)
 	panic("LSQ_head/LSQ_tail wedged");
-
+	//printf("\n HERE \n");
       /* check if pipetracing is still active */
       ptrace_check_active(regs.regs_PC, sim_num_insn, sim_cycle);
       /* indicate new cycle in pipetrace */

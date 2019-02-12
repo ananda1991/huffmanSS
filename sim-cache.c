@@ -441,7 +441,7 @@ sim_check_options(struct opt_odb_t *odb,	/* options database */
 				   il2_access_fn, /* hit latency */1, use_trail);
 	}
     }
-
+  printf("\nCHECKING TLB's\n");
   /* use an I-TLB? */
   if (!mystricmp(itlb_opt, "none"))
     itlb = NULL;
@@ -469,6 +469,7 @@ sim_check_options(struct opt_odb_t *odb,	/* options database */
 			  cache_char2policy(c), dtlb_access_fn,
 			  /* hit latency */1, use_trail);
     }
+printf("\nExiting Cache Create\n");
 }
 
 /* initialize the simulator */
@@ -588,6 +589,7 @@ sim_reg_stats(struct stat_sdb_t *sdb)	/* stats database */
     }
   ld_reg_stats(sdb);
   mem_reg_stats(mem, sdb);
+  printf("\nEXITING REG STATS\n");
 }
 
 /* dump simulator-specific auxiliary simulator statistics */

@@ -425,6 +425,7 @@ cache_create(char *name,		/* name of the cache */
 	    cp->sets[i].way_tail = blk;
 	}
     }
+  printf("Created Cache %s\n",name);
   return cp;
 }
 
@@ -560,8 +561,8 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
   sprintf(buf, "%s.t3_writes", name);
   stat_reg_counter(sdb, buf, "total number of writes in trail-3", &cp->t3_writes, 0, NULL);
   sprintf(buf, "%s.t4_accesses", name);
-//  a = cp->t4_hits; b = cp->t4_misses;  
-//  sprintf(buf1, "%lld + %lld", a, b);
+  //int a = cp->t4_hits; int b = cp->t4_misses;  
+  //sprintf(buf1, "%lld + %lld", a, b);
   sprintf(buf1, "%s.t4_hits + %s.t4_misses", name, name);
   stat_reg_formula(sdb, buf, "total number of accesses to trail-4", buf1, "%12.0f");
   sprintf(buf, "%s.t4_reads", name);
@@ -597,9 +598,9 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
   sprintf(buf1, "%s.t4_misses / %s.t4_accesses", name, name);
   stat_reg_formula(sdb, buf, "trail-4 miss rate (i.e., misses/ref)", buf1, NULL);
 
-  access_time = cacti_delay(cp,"t1",1, cp->t1_reads, cp->t1_writes);
-  sprintf(buf, "%s.t1_access_time",name);
-  printf("%lld\n",cp->t1_hits);
+  access_time = 1;//cacti_delay(cp,"t1",1, cp->t1_reads, cp->t1_writes);
+  //sprintf(buf, "%s.t1_access_time",name);
+  printf("\n\nWTF%lld\n\n",cp->t1_hits);
   stat_reg_float(sdb,buf,"trail-1 access time",(void*)&access_time,2.0,NULL);
   //DEBUG
   printf("**************************Registering Trail stats complete**********************\n");
@@ -625,6 +626,8 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
   sprintf(buf, "%s.inv_rate", name);
   sprintf(buf1, "%s.invalidations / %s.accesses", name, name);
   stat_reg_formula(sdb, buf, "invalidation rate (i.e., invs/ref)", buf1, NULL);
+  //printf("%lld\n",cp->t1_hits);
+  printf("Cache Registration Complete\n");
 }
 
 /* print cache stats */
@@ -914,7 +917,7 @@ cache_access(struct cache_t *cp,	/* cache to access */
 //              s = fopen("/home/ananda/simplescalar/simplesim-3.0/latency.txt", "a");
 //              for(c=0,state = cp->sets[0].way_head; state; state = state->way_next)
 //              { if(c==0)fprintf(s,"\nR\n");fprintf(s,"way%d tag=%u\t",c,state->tag);c++; }        
-                /*fprintf(s,"\nR\n");*/fprintf(s,"%d\n",lat);      
+                /*fprintf(s,"\nR\n");*///fprintf(s,"%d\n",lat);      
 //              fclose(s);
               }
 
@@ -1190,19 +1193,15 @@ cache_access(struct cache_t *cp,	/* cache to access */
   {tlat = 3;cp->flat = cp->flat - 0.87;}  
   else if(1.16 < (0.1 + cp->flat) <= 1.45)
   {tlat = 4;cp->flat = cp->flat - 1.16;}  
-  
+ // printf("TLAT = %f\nHIT LAT=%d\n",tlat,cp->hit_latency); 
   /* return first cycle data is available to access */
-  return (int) MAX(tlat, (blk->ready - now));
+  //return (int) MAX(tlat, (blk->ready - now));
+  return (int) MAX(cp->hit_latency, (blk->ready - now));
 
  cache_fast_hit: /* fast hit handler */
   
   /* **FAST HIT** */
   cp->hits++;
-/*  m = fopen("/home/ananda/simplescalar/simplesim-3.0/hit_miss_log.txt", "a");
-  if (m == NULL)
-  {printf("Error opening hit_miss_log.txt file %s\n", strerror(errno));exit(1);}
-  fprintf(m,"H\t%u\t%u\n",addr,tag);
-  fclose(m); */
 
   /* copy data out of cache block, if block exists */
   if (cp->balloc)
@@ -1466,8 +1465,9 @@ cache_access(struct cache_t *cp,	/* cache to access */
   {tlat = 3;cp->flat = cp->flat - 0.87;}
   else if(1.16 < (0.1 + cp->flat) <= 1.45)
   {tlat = 4;cp->flat = cp->flat - 1.16;}
-  return (int) MAX(tlat, (blk->ready - now));
-//  return (int) MAX(cp->hit_latency, (blk->ready - now));
+//  printf("TLAT = %f\nHIT LAT=%d\n",tlat,cp->hit_latency); 
+  //return (int) MAX(tlat, (blk->ready - now));
+  return (int) MAX(cp->hit_latency, (blk->ready - now));
 
 }
 
