@@ -1,0 +1,31 @@
+Note: 2/12/19
+
+* paths to the compiler binaries in the spec2006/pisa.cgf file are set to SS's version of gcc compiler(2.7.2.3)
+* Commands to install and run SPEC2006 (without runspec)
+	* Extract SPEC source files and cd into it
+	* ./install.sh -d <destination directory for installation>	
+	* The script should automatically select the best config match, else choose
+	* Post installation, goto installation directory and run
+		. ./shrc
+	* How the environment is set: use the "go" command to navigate through SPEC
+	  (go top, go <benchmark_name> etc.)
+	* Clone a config file from root_dir/configs/ and edit it as needed (use different
+	  compiler binaries, for example)
+	* Run the following to setup the benchmark directories without actually installing
+		runspec --fake --loose --size test --tune base --config pisa.cfg bwaves
+	* Now got build directory using
+		go bwaves
+		cd build/build_*something*here*/
+	* At this point, if the config file is correctly setup, simple run
+		specmake clean
+		specmake
+
+	  Else, to manually run each command to build the benchmark, run
+		specmake -n
+	  This prints out the commands without executing them
+	* Next goto ../../run/run*something*here*/
+	* In this folder, we run the benchmark. The binary from the build directory needs
+	  to be copied here with  a specific name. To get the name, run
+		specinvoke -n
+	* Copy the benchmark binary from ../../build/build*something*here*/
+	* The above command also prints out the manual command for running the benchmark
