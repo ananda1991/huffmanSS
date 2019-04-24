@@ -45,8 +45,8 @@
  * Definitions of a simple cache block class.
  */
 
-#ifndef __MEM_CACHE_BLK_HH__
-#define __MEM_CACHE_BLK_HH__
+#ifndef __MEM_CACHE_CACHE_BLK_HH__
+#define __MEM_CACHE_CACHE_BLK_HH__
 
 #include <cassert>
 #include <cstdint>
@@ -59,16 +59,6 @@
 #include "mem/cache/replacement_policies/base.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
-
-#define T0_SIZE
-#define T0_FMIN
-
-/* Track current size of Trail-0 */
-int t0_size = 0;
-
-/* Hit counters for Trail */
-unsigned long t0_hits = 0;
-unsigned long t1_hits = 0;
 
 /**
  * Cache block status bit assignments
@@ -95,11 +85,14 @@ enum CacheBlkStatusBits : unsigned {
 class CacheBlk : public ReplaceableEntry
 {
   public:
-
-/** Trail info, set to larger trail by default  */
-	int *trail = 1;
-	/** Least frequency flag */
-	bool *lfreq = false;
+    /** Trail info, set to larger block by default */
+    int trail;
+    
+    /** Track least frequent block in Trail 0 */
+    bool lfreq;
+    
+    /** Enable trails */
+    bool trail_en = true;
 
     /** Task Id associated with this block */
     uint32_t task_id;
@@ -121,14 +114,11 @@ class CacheBlk : public ReplaceableEntry
     /** The current status of this block. @sa CacheBlockStatusBits */
     State status;
 
-    /** Which curTick() will this block be accessible */
-    Tick whenReady;
-
     /**
-     * The set and way this block belongs to.
-     * @todo Move this into subclasses when we fix CacheTags to use them.
+     * Which curTick() will this block be accessible. Its value is only
+     * meaningful if the block is valid.
      */
-    int set, way;
+    Tick whenReady;
 
     /** Number of references to this block since it was brought in. */
     unsigned refCount;
@@ -136,7 +126,10 @@ class CacheBlk : public ReplaceableEntry
     /** holds the source requestor ID for this block. */
     int srcMasterId;
 
-    /** Tick on which the block was inserted in the cache. */
+    /**
+     * Tick on which the block was inserted in the cache. Its value is only
+     * meaningful if the block is valid.
+     */
     Tick tickInserted;
 
   protected:
@@ -182,7 +175,7 @@ class CacheBlk : public ReplaceableEntry
     std::list<Lock> lockList;
 
   public:
-    CacheBlk() : data(nullptr)
+    CacheBlk() : data(nullptr), tickInserted(0)
     {
         invalidate();
     }
@@ -233,7 +226,6 @@ class CacheBlk : public ReplaceableEntry
         whenReady = MaxTick;
         refCount = 0;
         srcMasterId = Request::invldMasterId;
-        tickInserted = MaxTick;
         lockList.clear();
     }
 
@@ -266,10 +258,50 @@ class CacheBlk : public ReplaceableEntry
     }
 
     /**
+     * Set valid bit.
+     */
+    virtual void setValid()
+    {
+        assert(!isValid());
+        status |= BlkValid;
+    }
+
+    /**
+     * Set secure bit.
+     */
+    virtual void setSecure()
+    {
+        status |= BlkSecure;
+    }
+
+    /**
+     * Get tick at which block's data will be available for access.
+     *
+     * @return Data ready tick.
+     */
+    Tick getWhenReady() const
+    {
+        return whenReady;
+    }
+
+    /**
+     * Set tick at which block's data will be available for access. The new
+     * tick must be chronologically sequential with respect to previous
+     * accesses.
+     *
+     * @param tick New data ready tick.
+     */
+    void setWhenReady(const Tick tick)
+    {
+        assert(tick >= tickInserted);
+        whenReady = tick;
+    }
+
+    /**
      * Set member variables when a block insertion occurs. Resets reference
      * count to 1 (the insertion counts as a reference), and touch block if
      * it hadn't been touched previously. Sets the insertion tick to the
-     * current tick. Does not make block valid.
+     * current tick. Marks the block valid.
      *
      * @param tag Block address tag.
      * @param is_secure Whether the block is in secure space or not.
@@ -314,12 +346,12 @@ class CacheBlk : public ReplaceableEntry
     }
 
     /**
-     * Pretty-print a tag, and interpret state bits to readable form
+     * Pretty-print tag, set and way, and interpret state bits to readable form
      * including mapping to a MOESI state.
      *
      * @return string with basic state information
      */
-    std::string print() const
+    virtual std::string print() const
     {
         /**
          *  state       M   O   E   S   I
@@ -356,8 +388,9 @@ class CacheBlk : public ReplaceableEntry
           default:    s = 'T'; break; // @TODO add other types
         }
         return csprintf("state: %x (%c) valid: %d writable: %d readable: %d "
-                        "dirty: %d tag: %x", status, s, isValid(),
-                        isWritable(), isReadable(), isDirty(), tag);
+                        "dirty: %d | tag: %#x set: %#x way: %#x", status, s,
+                        isValid(), isWritable(), isReadable(), isDirty(), tag,
+                        getSet(), getWay());
     }
 
     /**
@@ -446,15 +479,19 @@ class TempCacheBlk final : public CacheBlk
     void insert(const Addr addr, const bool is_secure,
                 const int src_master_ID=0, const uint32_t task_ID=0) override
     {
+        // Make sure that the block has been properly invalidated
+        assert(status == 0);
+
         // Set block address
         _addr = addr;
 
         // Set secure state
         if (is_secure) {
-            status = BlkSecure;
-        } else {
-            status = 0;
+            setSecure();
         }
+
+        // Validate block
+        setValid();
     }
 
     /**
@@ -484,4 +521,4 @@ class CacheBlkPrintWrapper : public Printable
                const std::string &prefix = "") const;
 };
 
-#endif //__MEM_CACHE_BLK_HH__
+#endif //__MEM_CACHE_CACHE_BLK_HH__

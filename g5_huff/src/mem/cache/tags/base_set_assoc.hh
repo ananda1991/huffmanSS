@@ -54,60 +54,60 @@
 
 #include "base/logging.hh"
 #include "base/types.hh"
-#include "debug/CacheRepl.hh"
 #include "mem/cache/base.hh"
-#include "mem/cache/blk.hh"
+#include "mem/cache/cache_blk.hh"
 #include "mem/cache/replacement_policies/base.hh"
+#include "mem/cache/replacement_policies/replaceable_entry.hh"
 #include "mem/cache/tags/base.hh"
-#include "mem/cache/tags/cacheset.hh"
+#include "mem/cache/tags/indexing_policies/base.hh"
 #include "mem/packet.hh"
 #include "params/BaseSetAssoc.hh"
 
 /**
- * A BaseSetAssoc cache tag store.
+ * A basic cache tag store.
  * @sa  \ref gem5MemorySystem "gem5 Memory System"
  *
  * The BaseSetAssoc placement policy divides the cache into s sets of w
- * cache lines (ways). A cache line is mapped onto a set, and can be placed
- * into any of the ways of this set.
+ * cache lines (ways).
  */
+#ifndef TRAIL_STUFF
+#define TRAIL_STUFF
+
+#define T0_FMIN 1000
+#define T1_FMIN 1000
+#define T2_FMIN 1000
+
+#define T0_SIZE 200
+#define T1_SIZE 200
+#define T2_SIZE 200
+
+#endif
+
 class BaseSetAssoc : public BaseTags
 {
-  public:
-    /** Typedef the block type used in this tag store. */
-    typedef CacheBlk BlkType;
-    /** Typedef the set type used in this tag store. */
-    typedef CacheSet<CacheBlk> SetType;
-
   protected:
-    /** The associativity of the cache. */
-    const unsigned assoc;
     /** The allocatable associativity of the cache (alloc mask). */
     unsigned allocAssoc;
 
     /** The cache blocks. */
-    std::vector<BlkType> blks;
-
-    /** The number of sets in the cache. */
-    const unsigned numSets;
+    std::vector<CacheBlk> blks;
 
     /** Whether tags and data are accessed sequentially. */
     const bool sequentialAccess;
-
-    /** The cache sets. */
-    std::vector<SetType> sets;
-
-    /** The amount to shift the address to get the set. */
-    int setShift;
-    /** The amount to shift the address to get the tag. */
-    int tagShift;
-    /** Mask out all bits that aren't part of the set index. */
-    unsigned setMask;
 
     /** Replacement policy */
     BaseReplacementPolicy *replacementPolicy;
 
   public:
+
+    /**Trail vars */
+    int t0_size = 0;
+    int t1_size = 0;
+    int t2_size = 0;
+    CacheBlk* t0_mb = new(CacheBlk);    
+    CacheBlk* t1_mb = new(CacheBlk);    
+    CacheBlk* t2_mb = new(CacheBlk);    
+
     /** Convenience typedef. */
      typedef BaseSetAssocParams Params;
 
@@ -122,6 +122,11 @@ class BaseSetAssoc : public BaseTags
     virtual ~BaseSetAssoc() {};
 
     /**
+     * Initialize blocks as CacheBlk instances.
+     */
+    void tagsInit() override;
+
+    /**
      * This function updates the tags when a block is invalidated. It also
      * updates the replacement data.
      *
@@ -131,17 +136,18 @@ class BaseSetAssoc : public BaseTags
 
     /**
      * Access block and update replacement data. May not succeed, in which case
-     * nullptr is returned. This has all the implications of a cache
-     * access and should only be used as such. Returns the access latency as a
-     * side effect.
+     * nullptr is returned. This has all the implications of a cache access and
+     * should only be used as such. Returns the tag lookup latency as a side
+     * effect.
+     *
      * @param addr The address to find.
      * @param is_secure True if the target memory space is secure.
-     * @param lat The access latency.
+     * @param lat The latency of the tag lookup.
      * @return Pointer to the cache block if found.
      */
-    CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) override
+    CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat, int cmd) override
     {
-        BlkType *blk = findBlock(addr, is_secure);
+        CacheBlk *blk = findBlock(addr, is_secure);
 
         // Access all tags in parallel, hence one in each way.  The data side
         // either accesses all blocks in parallel, or one block sequentially on
@@ -155,96 +161,188 @@ class BaseSetAssoc : public BaseTags
             dataAccesses += allocAssoc;
         }
 
+        // If a cache hit
         if (blk != nullptr) {
-            // If a cache hit
-            lat = accessLatency;
-            // Check if the block to be accessed is available. If not,
-            // apply the accessLatency on top of block->whenReady.
-            if (blk->whenReady > curTick() &&
-                cache->ticksToCycles(blk->whenReady - curTick()) >
-                accessLatency) {
-                lat = cache->ticksToCycles(blk->whenReady - curTick()) +
-                accessLatency;
-            }
-
             // Update number of references to accessed block
             blk->refCount++;
 
             // Update replacement data of accessed block
             replacementPolicy->touch(blk->replacementData);
-
-			//Block management for Trail 1
-			if(blk->trail == 1)
-			{	
-				//Update hit count on Trail
-				t1_hits++;
-
-				//Migrate to Trail 0 ?
-				if(blk->refCount >= T0_FMIN && t0_size < T0_SIZE)
+	    
+	    	//Trails not enabled
+	    	if(blk->trail_en == false){
+	        	l1d_lat += 4;
+			switch(cmd){
+				case 0: l1d_reads++;
+					break;
+				case 1: l1d_writes++;
+					break;
+			}
+			
+	    	}
+	    
+	    	//Block management for Trail 3
+	    	else if(blk->trail_en == true && blk->trail == 3 && name()=="system.cpu.dcache.tags")
+	    	{	
+	    		//Update hit count on Trail
+	        	t3_hits++;
+	        	l1d_lat += 2;
+			switch(cmd){
+				case 0: t3_reads++;
+					break;
+				case 1: t3_writes++;
+					break;
+			}
+				
+	    		//Migrate to Trail 2 ?
+           		if(blk->refCount >= T2_FMIN && t2_size < T2_SIZE)
 				{
-					//Increment Trail 0 occupancy
-					t0_size++;	
+			    	//Increment Trail 2 occupancy
+					t2_size++;	
 
-					//Add block to Trail 0
-					blk->trail = 0;	
+					//Add block to Trail 2
+					blk->trail = 2;	
+					blk->lfreq = false;
 
-					//Update block w/ lowest frequency
-					if(minBlk->refCount >= blk->refCount)
+					//Update Trail 2 min block
+					if(t2_mb->refCount >= blk->refCount)
 					{
 						blk->lfreq = true;
-						minBlk->lfreq = false;
-						minBlk = blk;
+						t2_mb->lfreq = false;
+						t2_mb = blk;
+					}
+				}
+				else if(blk->refCount >= T2_FMIN && t2_size >= T2_SIZE)
+				{		
+					/* If the current min block in Trail 2 has a lower refCount
+					** than our blk, then swap their trails
+					*/
+					if(t2_mb->refCount+2 < blk->refCount)
+					{
+						blk->lfreq = true;
+						t2_mb->lfreq = false;
+						blk->trail = 2;
+						t2_mb->trail = 3;
+						t2_mb = blk;
+					}
+				}
+	    	}
+
+	    	//Block management for Trail 2
+	    	else if(blk->trail_en == true && blk->trail == 2 && name()=="system.cpu.dcache.tags")
+	    	{	
+	    		//Update hit count on Trail
+	       		t2_hits++;
+	        	l1d_lat += 2;
+			switch(cmd){
+				case 0: t2_reads++;
+				        break;
+				case 1: t2_writes++;
+				   	break;
+			}
+	    		//Migrate to Trail 1 ?
+           		if(blk->refCount >= T1_FMIN && t1_size < T1_SIZE)
+				{
+			    	//Increment Trail 1 occupancy
+					t1_size++;	
+
+					//Add block to Trail 1
+					blk->trail = 1;	
+					blk->lfreq = false;
+
+					//Update Trail 2 min block
+					if(t1_mb->refCount >= blk->refCount)
+					{
+						blk->lfreq = true;
+						t1_mb->lfreq = false;
+						t1_mb = blk;
+					}
+				}
+				else if(blk->refCount >= T1_FMIN && t1_size >= T1_SIZE)
+				{		
+					/* If the current min block in Trail 1 has a lower refCount
+					** than our blk, then swap their trails
+					*/
+					if(t1_mb->refCount+2 < blk->refCount)
+					{
+						blk->lfreq = true;
+						t1_mb->lfreq = false;
+						blk->trail = 1;
+						t1_mb->trail = 2;
+						t1_mb = blk;
+					}
+				}
+	    	}
+	    	//Block management for Trail 1
+	    	else if(blk->trail_en == true && blk->trail == 1 && name()=="system.cpu.dcache.tags")
+	    	{	
+	    		//Update hit count on Trail
+	        	t1_hits++;
+	        	l1d_lat += 2;
+			switch(cmd){
+				case 0: t1_reads++;
+					break;
+				case 1: t1_writes++;
+					break;
+			}
+	    		//Migrate to Trail 0 ?
+        	   	if(blk->refCount >= T0_FMIN && t0_size < T0_SIZE)
+				{
+			    	//Increment Trail 2 occupancy
+					t0_size++;	
+
+					//Add block to Trail 2
+					blk->trail = 0;	
+					blk->lfreq = false;
+
+					//Update Trail 2 min block
+					if(t0_mb->refCount >= blk->refCount)
+					{
+						blk->lfreq = true;
+						t0_mb->lfreq = false;
+						t0_mb = blk;
 					}
 				}
 				else if(blk->refCount >= T0_FMIN && t0_size >= T0_SIZE)
-				{	
-					/* If the current minBlk in Trail 0 has a lower refCount
+				{		
+					/* If the current min block in Trail 0 has a lower refCount
 					** than our blk, then swap their trails
 					*/
-					if(minBlk->refCount < blk->refCount)
+					if(t0_mb->refCount+2 < blk->refCount)
 					{
 						blk->lfreq = true;
-						minBlk->lfreq = false;
-						minBlk = blk;
+						t0_mb->lfreq = false;
+						blk->trail = 0;
+						t0_mb->trail = 1;
+						t0_mb = blk;
 					}
 				}
+	    	}
+	    	//Block management for Trail 0
+	    	else if(blk->trail_en == true && blk->trail == 0)
+	    	{	
+			//Update hit count on Trail
+			t0_hits++;
+			l1d_lat += 1;
+			switch(cmd){
+				case 0: t0_reads++;
+					break;
+				case 1: t0_writes++;
+					break;
 			}
-			//Block management for Trail 0
-			if(blk->trail == 0)
-			{	
-				//Update hit count on Trail
-				t0_hits++;
-				
-				/* If blk is minBlk, check if its still the least frequent
+			// If blk is minBlk, check if its still the least frequent
 				 
-			}
-
-        } else {
-            // If a cache miss
-            lat = lookupLatency;
+	    	}
         }
+	else {
+	    l1d_misses++;
+	}
+
+        // The tag lookup latency is the same for a hit or a miss
+        lat = lookupLatency;
 
         return blk;
     }
-
-    /**
-     * Finds the given address in the cache, do not update replacement data.
-     * i.e. This is a no-side-effect find of a block.
-     *
-     * @param addr The address to find.
-     * @param is_secure True if the target memory space is secure.
-     * @return Pointer to the cache block if found.
-     */
-    CacheBlk* findBlock(Addr addr, bool is_secure) const override;
-
-    /**
-     * Find a block given set and way.
-     *
-     * @param set The set of the block.
-     * @param way The way of the block.
-     * @return The block.
-     */
-    ReplaceableEntry* findBlockBySetAndWay(int set, int way) const override;
 
     /**
      * Find replacement victim based on address. The list of evicted blocks
@@ -258,35 +356,18 @@ class BaseSetAssoc : public BaseTags
     CacheBlk* findVictim(Addr addr, const bool is_secure,
                          std::vector<CacheBlk*>& evict_blks) const override
     {
-        // Get possible locations for the victim block
-        std::vector<CacheBlk*> locations = getPossibleLocations(addr);
+        // Get possible entries to be victimized
+        const std::vector<ReplaceableEntry*> entries =
+            indexingPolicy->getPossibleEntries(addr);
 
         // Choose replacement victim from replacement candidates
         CacheBlk* victim = static_cast<CacheBlk*>(replacementPolicy->getVictim(
-                               std::vector<ReplaceableEntry*>(
-                                   locations.begin(), locations.end())));
+                                entries));
 
         // There is only one eviction for this replacement
         evict_blks.push_back(victim);
 
-        DPRINTF(CacheRepl, "set %x, way %x: selecting blk for replacement\n",
-            victim->set, victim->way);
-
         return victim;
-    }
-
-    /**
-     * Find all possible block locations for insertion and replacement of
-     * an address. Should be called immediately before ReplacementPolicy's
-     * findVictim() not to break cache resizing.
-     * Returns blocks in all ways belonging to the set of the address.
-     *
-     * @param addr The addr to a find possible locations for.
-     * @return The possible locations.
-     */
-    virtual const std::vector<CacheBlk*> getPossibleLocations(Addr addr) const
-    {
-        return sets[extractSet(addr)].blks;
     }
 
     /**
@@ -327,24 +408,14 @@ class BaseSetAssoc : public BaseTags
     }
 
     /**
-     * Generate the tag from the given address.
-     * @param addr The address to get the tag from.
-     * @return The tag of the address.
-     */
-    Addr extractTag(Addr addr) const override
-    {
-        return (addr >> tagShift);
-    }
-
-    /**
-     * Regenerate the block address from the tag and set.
+     * Regenerate the block address from the tag and indexing location.
      *
      * @param block The block.
      * @return the block address.
      */
     Addr regenerateBlkAddr(const CacheBlk* blk) const override
     {
-        return ((blk->tag << tagShift) | ((Addr)blk->set << setShift));
+        return indexingPolicy->regenerateAddr(blk->tag, blk);
     }
 
     void forEachBlk(std::function<void(CacheBlk &)> visitor) override {
@@ -360,18 +431,6 @@ class BaseSetAssoc : public BaseTags
             }
         }
         return false;
-    }
-
-  private:
-    /**
-     * Calculate the set index from the address.
-     *
-     * @param addr The address to get the set from.
-     * @return The set index of the address.
-     */
-    int extractSet(Addr addr) const
-    {
-        return ((addr >> setShift) & setMask);
     }
 };
 

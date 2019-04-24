@@ -38,7 +38,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mem/cache/blk.hh"
+#include "mem/cache/cache_blk.hh"
 
 #include "base/cprintf.hh"
 
@@ -46,6 +46,9 @@ void
 CacheBlk::insert(const Addr tag, const bool is_secure,
                  const int src_master_ID, const uint32_t task_ID)
 {
+    // Make sure that the block has been properly invalidated
+    assert(status == 0);
+
     // Set block tag
     this->tag = tag;
 
@@ -63,14 +66,17 @@ CacheBlk::insert(const Addr tag, const bool is_secure,
 
     // Set secure state
     if (is_secure) {
-        status = BlkSecure;
-    } else {
-        status = 0;
+        setSecure();
     }
-	// Reset trail related parameters
-	this->trail = 1;
-	this->lfreq = false;
-	this->freq = 1;
+
+    // Validate block
+    setValid();
+
+    // Assign Trail 
+    trail = 3;
+
+    // Least frequent? No, because this is not trail 0
+    lfreq = false;
 }
 
 void
