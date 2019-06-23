@@ -89,8 +89,9 @@ for file in /home/biswas/gem5/simout/*.out.csv
 do
 	out=$file
 	out=${out::-12}
+	out=${out:25}
 	echo $out
-	cat < $file | cut -c 24- | sed 's/#.*$//' | tail -n 5 > $out.csv
+	cat < $file | cut -c 24- | sed 's/#.*$//' | cat > /home/biswas/gem5/simdata/data_04_26_2019/$out.csv
 	rm $file
 done
 #sed -n '72p;73p;74p;75p;83,94p;97p' $file >> $b.csv
